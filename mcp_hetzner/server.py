@@ -27,7 +27,9 @@ from hcloud.volumes.domain import Volume
 from hcloud.ssh_keys.domain import SSHKey
 from pydantic import BaseModel, Field
 
-from mcp.server.fastmcp import FastMCP
+from mcp.server.mcpserver import MCPServer
+
+from mcp_hetzner import __version__
 
 # Load environment variables
 dotenv.load_dotenv()
@@ -35,17 +37,17 @@ dotenv.load_dotenv()
 # Check if Hetzner Cloud API token is configured
 HCLOUD_TOKEN = os.environ.get("HCLOUD_TOKEN")
 if not HCLOUD_TOKEN:
-    print("Error: HCLOUD_TOKEN environment variable not set. Please add it to your .env file.")
+    print("Error: HCLOUD_TOKEN environment variable not set. Please add it to your .env file.", file=sys.stderr)
     sys.exit(1)
 
 # Create Hetzner Cloud client
 client = Client(token=HCLOUD_TOKEN)
 
-# Create MCP server with server configuration
-mcp = FastMCP(
+# Transport host/port belong on run(), not the constructor (mcp 2.x).
+mcp = MCPServer(
     "Hetzner Cloud",
-    host=os.environ.get("MCP_HOST", "localhost"),
-    port=int(os.environ.get("MCP_PORT", 8080))
+    instructions="Manage Hetzner Cloud servers, volumes, firewalls, and SSH keys.",
+    version=__version__,
 )
 
 # Helper function to convert Server object to dict
@@ -1310,20 +1312,24 @@ def start_server(transport="stdio", port=None):
     
     Args:
         transport: The transport to use (stdio or sse)
-        port: Optional port override
+        port: Optional port override for HTTP transports
     """
+    if transport == "stdio":
+        print("Starting Hetzner Cloud MCP server using stdio transport", file=sys.stderr)
+        mcp.run(transport="stdio")
+        return
+
     host = os.environ.get("MCP_HOST", "localhost")
     if port is None:
         port = int(os.environ.get("MCP_PORT", 8080))
     else:
         port = int(port)
-        
-    # Update the server port if it was specified
-    mcp.port = port
-    
-    print(f"Starting Hetzner Cloud MCP server on {host}:{port} using {transport} transport")
-    # Run the server - this is a synchronous function that will block until the server stops
-    mcp.run(transport=transport)
+
+    print(
+        f"Starting Hetzner Cloud MCP server on {host}:{port} using {transport} transport",
+        file=sys.stderr,
+    )
+    mcp.run(transport=transport, host=host, port=port)
 
 def main():
     """Entry point for the package."""
